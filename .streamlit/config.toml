@@ -1,0 +1,14 @@
+# Dark theme approximating the mockups (navy background, blue accent).
+[theme]
+base = "dark"
+primaryColor = "#2563EB"
+backgroundColor = "#0B1120"
+secondaryBackgroundColor = "#111A2E"
+textColor = "#E5E7EB"
+font = "sans serif"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false

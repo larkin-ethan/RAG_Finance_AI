@@ -1,0 +1,9 @@
+# Public demo watchlist — neutral, well-known companies across sectors.
+# Your personal holdings go in config/holdings.yaml (gitignored).
+tickers: [AAPL, MSFT, NVDA, JPM, JNJ, XOM, KO, COST]
+forms: ["10-K", "10-Q"]
+since: "2023-01-01"
+# XOM reorganized into ExxonMobil Holdings Corp (new CIK) in 2026; its earlier
+# filings are under the old Exxon Mobil Corp CIK.
+extra_ciks:
+  XOM: ["34088"]

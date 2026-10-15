@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets & personal config
+.env
+config/holdings.yaml
+
+# Data (raw filings, caches) — reproducible from EDGAR
+data/
+
+# OS / editors
+.DS_Store
+.vscode/
+.idea/
+
+# Deploy state
+deploy/gcp/.image
+
+# Local tool config (machine-specific)
+.claude/

@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint + unit tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:  # real pgvector, so the DB integration tests run instead of skipping
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: finrag
+          POSTGRES_PASSWORD: finrag
+          POSTGRES_DB: finrag
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U finrag" --health-interval 5s --health-retries 10
+    env:
+      SEC_USER_AGENT: "FinRAG CI ci@example.com"
+      TEST_DATABASE_URL: postgresql://finrag:finrag@localhost:5432/finrag
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.0"
+          enable-cache: true
+      - run: uv sync --frozen --extra dev
+      - run: uv run ruff check src tests ui
+      - run: uv run ruff format --check src tests ui
+      - run: uv run pytest -q -rs
+
+  retrieval-eval:
+    name: Retrieval eval (no LLM)
+    runs-on: ubuntu-latest
+    needs: test
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: finrag
+          POSTGRES_PASSWORD: finrag
+          POSTGRES_DB: finrag
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U finrag" --health-interval 5s --health-retries 10
+    env:
+      SEC_USER_AGENT: "FinRAG CI ci@example.com"
+      DATABASE_URL: postgresql://finrag:finrag@localhost:5432/finrag
+      EMBED_PROVIDER: local
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download eval index (release "eval-index")
+        id: index
+        run: |
+          if gh release download eval-index --pattern 'finrag-index.tsv.gz' --dir . 2>/dev/null; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No 'eval-index' release yet; skipping the retrieval eval. See evals/README.md."
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.index.outputs.found == 'true'
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.0"
+          enable-cache: true
+      - if: steps.index.outputs.found == 'true'
+        uses: actions/cache@v4  # the 1.2 GB embedding model
+        with:
+          path: ~/.cache/huggingface
+          key: hf-qwen3-embedding-0.6b
+      - if: steps.index.outputs.found == 'true'
+        run: |
+          uv sync --frozen
+          uv run python -m finrag.evals.index import finrag-index.tsv.gz
+          uv run python -m finrag.evals.run --name ci --split dev --mode retrieval
+          uv run python -m finrag.evals.gate evals/results/ci-dev.json evals/baseline_retrieval.json

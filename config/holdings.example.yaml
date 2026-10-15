@@ -1,0 +1,7 @@
+# Copy to config/holdings.yaml and list your holdings. That file is gitignored.
+tickers: [TICKER1, TICKER2]
+forms: ["10-K", "10-Q"]
+since: "2023-01-01"
+# Optional: predecessor CIKs if a company reorganized/merged (look up on EDGAR).
+# extra_ciks:
+#   TICKER1: ["1234567"]
