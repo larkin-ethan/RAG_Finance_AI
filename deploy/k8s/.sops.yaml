@@ -1,0 +1,6 @@
+# SOPS config: encrypt only the values of Secret manifests, with your age key.
+# setup-secrets.sh replaces AGE_PUBLIC_KEY with your public key (age1...).
+creation_rules:
+  - path_regex: secrets\.enc\.yaml$
+    encrypted_regex: ^(data|stringData)$
+    age: AGE_PUBLIC_KEY

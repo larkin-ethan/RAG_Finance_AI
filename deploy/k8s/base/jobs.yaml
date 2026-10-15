@@ -1,0 +1,192 @@
+# migrate: applies the schema as finrag_owner (the app role has no DDL rights).
+# update-filings: daily EDGAR check (runs as the app role, via the egress proxy).
+# backup: nightly pg_dump (postgres image, matching server version), then
+#         age-encrypted to the backups volume; 14 days kept.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+spec:
+  backoffLimit: 2
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels: {app: migrate, postgres-client: "true"}
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: migrate
+          image: finrag-local:latest
+          imagePullPolicy: Never
+          command: [python, -m, finrag.store.migrate]
+          env:
+            - {name: APP_DB_ROLE, value: finrag_app}
+            - name: MIGRATE_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: finrag-secrets, key: MIGRATE_DATABASE_URL}}
+          resources:
+            requests: {cpu: 100m, memory: 128Mi}
+            limits: {cpu: 500m, memory: 512Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: pg-ca, mountPath: /tls-ca, readOnly: true}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+        - name: pg-ca
+          secret: {secretName: postgres-ca}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: update-filings
+spec:
+  schedule: "0 7 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 7200
+      template:
+        metadata:
+          labels:
+            app: update-filings
+            postgres-client: "true"
+            egress-proxy-client: "true"
+            ollama-client: "true"
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile: {type: RuntimeDefault}
+          containers:
+            - name: update
+              image: finrag-local:latest
+              imagePullPolicy: Never
+              command: [python, -m, finrag.jobs.update_filings]
+              envFrom:
+                - configMapRef: {name: finrag-config}
+              env:
+                - {name: DB_AUTO_MIGRATE, value: "false"}
+                - name: DATABASE_URL
+                  valueFrom: {secretKeyRef: {name: finrag-secrets, key: DATABASE_URL}}
+                - name: SEC_USER_AGENT
+                  valueFrom: {secretKeyRef: {name: finrag-secrets, key: SEC_USER_AGENT}}
+              resources:
+                requests: {cpu: 250m, memory: 512Mi}
+                limits: {cpu: "2", memory: 2Gi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              volumeMounts:
+                - {name: data, mountPath: /app/data}
+                - {name: tmp, mountPath: /tmp}
+                - {name: pg-ca, mountPath: /tls-ca, readOnly: true}
+                - {name: holdings, mountPath: /app/config/private, readOnly: true}
+          volumes:
+            - name: data
+              persistentVolumeClaim: {claimName: app-data}
+            - {name: tmp, emptyDir: {}}
+            - name: pg-ca
+              secret: {secretName: postgres-ca}
+            - name: holdings
+              secret: {secretName: finrag-holdings}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup
+spec:
+  schedule: "30 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels: {app: backup, postgres-client: "true"}
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile: {type: RuntimeDefault}
+          initContainers:
+            - name: dump
+              # Same image as the server: pg_dump must be >= the server's major version.
+              image: pgvector/pgvector:pg16@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a
+              command: [pg_dump, --format=custom, --file=/work/finrag.dump]
+              env:
+                - {name: HOME, value: /tmp}
+                - {name: PGHOST, value: postgres}
+                - {name: PGDATABASE, value: finrag}
+                - {name: PGUSER, value: finrag_owner}
+                - {name: PGSSLMODE, value: verify-full}
+                - {name: PGSSLROOTCERT, value: /tls-ca/ca.crt}
+                - name: PGPASSWORD
+                  valueFrom: {secretKeyRef: {name: finrag-secrets, key: FINRAG_OWNER_PASSWORD}}
+              resources:
+                requests: {cpu: 100m, memory: 128Mi}
+                limits: {cpu: "1", memory: 1Gi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              volumeMounts:
+                - {name: work, mountPath: /work}
+                - {name: tmp, mountPath: /tmp}
+                - {name: pg-ca, mountPath: /tls-ca, readOnly: true}
+          containers:
+            - name: encrypt
+              image: finrag-local:latest
+              imagePullPolicy: Never
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  out="/backups/finrag-$(date +%Y%m%d-%H%M).dump.age"
+                  age --recipient "$AGE_RECIPIENT" --output "$out" /work/finrag.dump
+                  rm -f /work/finrag.dump
+                  find /backups -name 'finrag-*.dump.age' -mtime +14 -delete
+                  echo "backup written: $out"
+              env:
+                - name: AGE_RECIPIENT   # public key; the private key never enters the cluster
+                  valueFrom: {secretKeyRef: {name: finrag-secrets, key: AGE_RECIPIENT}}
+              resources:
+                requests: {cpu: 50m, memory: 64Mi}
+                limits: {cpu: 500m, memory: 256Mi}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities: {drop: [ALL]}
+              volumeMounts:
+                - {name: work, mountPath: /work}
+                - {name: backups, mountPath: /backups}
+          volumes:
+            - {name: work, emptyDir: {}}
+            - {name: tmp, emptyDir: {}}
+            - name: pg-ca
+              secret: {secretName: postgres-ca}
+            - name: backups
+              persistentVolumeClaim: {claimName: backups}

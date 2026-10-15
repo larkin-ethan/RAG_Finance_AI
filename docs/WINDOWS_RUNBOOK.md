@@ -34,7 +34,7 @@ Never commit `.env`.
 ## 3. Install dependencies and check the GPU
 
 ```powershell
-uv sync --extra dev
+uv sync --extra dev --extra ml
 uv run python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
 ```
 ✅ Done when this prints `True` and your GPU's name. On Windows, uv installs the CUDA 12.8

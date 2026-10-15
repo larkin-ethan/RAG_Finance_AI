@@ -1,0 +1,121 @@
+# Postgres 16 + pgvector. TLS required for every network connection (hostssl
+# only; plain TCP rejected). Three roles: superuser (init only), finrag_owner
+# (schema/DDL, used by the migrate Job), finrag_app (DML only, used by the app).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+data:
+  pg_hba.conf: |
+    # The Unix socket only exists inside this container (used by the image's init scripts).
+    local     all  all                 trust
+    hostssl   all  all  0.0.0.0/0      scram-sha-256
+    hostssl   all  all  ::/0           scram-sha-256
+    hostnossl all  all  0.0.0.0/0      reject
+    hostnossl all  all  ::/0           reject
+  10-roles.sh: |
+    #!/bin/bash
+    set -euo pipefail
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname postgres \
+      -v owner_pw="$FINRAG_OWNER_PASSWORD" -v app_pw="$FINRAG_APP_PASSWORD" <<'SQL'
+    CREATE ROLE finrag_owner LOGIN PASSWORD :'owner_pw';
+    CREATE ROLE finrag_app LOGIN PASSWORD :'app_pw';
+    CREATE DATABASE finrag OWNER finrag_owner;
+    \connect finrag
+    CREATE EXTENSION IF NOT EXISTS vector;
+    REVOKE ALL ON SCHEMA public FROM PUBLIC;
+    ALTER SCHEMA public OWNER TO finrag_owner;
+    GRANT CONNECT ON DATABASE finrag TO finrag_app;
+    SQL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  selector: {app: postgres}
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels: {app: postgres}
+  template:
+    metadata:
+      labels: {app: postgres}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999   # "postgres" in the official image
+        runAsGroup: 999
+        fsGroup: 999
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg16@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a
+          args:
+            - -c
+            - ssl=on
+            - -c
+            - ssl_cert_file=/tls/tls.crt
+            - -c
+            - ssl_key_file=/tls/tls.key
+            - -c
+            - ssl_min_protocol_version=TLSv1.3
+            - -c
+            - hba_file=/config/pg_hba.conf
+            - -c
+            - password_encryption=scram-sha-256
+            - -c
+            - log_connections=on
+          env:
+            - {name: PGDATA, value: /var/lib/postgresql/data/pgdata}
+            - {name: POSTGRES_USER, value: postgres}
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: finrag-secrets, key: POSTGRES_PASSWORD}}
+            - name: FINRAG_OWNER_PASSWORD
+              valueFrom: {secretKeyRef: {name: finrag-secrets, key: FINRAG_OWNER_PASSWORD}}
+            - name: FINRAG_APP_PASSWORD
+              valueFrom: {secretKeyRef: {name: finrag-secrets, key: FINRAG_APP_PASSWORD}}
+          ports:
+            - containerPort: 5432
+          readinessProbe:
+            exec: {command: [pg_isready, -U, postgres, -h, /var/run/postgresql]}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {cpu: "2", memory: 2Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+            - {name: run, mountPath: /var/run/postgresql}
+            - {name: tmp, mountPath: /tmp}
+            - {name: tls, mountPath: /tls, readOnly: true}
+            - {name: config, mountPath: /config, readOnly: true}
+            - {name: initdb, mountPath: /docker-entrypoint-initdb.d, readOnly: true}
+      volumes:
+        - {name: run, emptyDir: {}}
+        - {name: tmp, emptyDir: {}}
+        - name: tls
+          secret: {secretName: postgres-tls, defaultMode: 0440}   # Postgres requires a private key file
+        - name: config
+          configMap: {name: postgres-config, items: [{key: pg_hba.conf, path: pg_hba.conf}]}
+        - name: initdb
+          configMap: {name: postgres-config, items: [{key: 10-roles.sh, path: 10-roles.sh}], defaultMode: 0555}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: {requests: {storage: 20Gi}}

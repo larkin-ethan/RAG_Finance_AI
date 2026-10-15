@@ -32,10 +32,34 @@ jobs:
         with:
           version: "0.13.0"
           enable-cache: true
-      - run: uv sync --frozen --extra dev
+      - run: uv sync --frozen --extra dev --extra ml
       - run: uv run ruff check src tests ui
       - run: uv run ruff format --check src tests ui
       - run: uv run pytest -q -rs
+
+  security:
+    name: Security scans
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.0"
+      - name: Known-vulnerable dependencies (pip-audit on the lock file)
+        run: |
+          uv export --frozen --all-extras --no-hashes --no-emit-project > requirements.txt
+          uvx pip-audit==2.9.0 --strict -r requirements.txt
+      - name: Kubernetes manifest misconfigurations (Trivy, HIGH/CRITICAL fail)
+        run: |
+          docker run --rm -v "$PWD/deploy/k8s:/k8s:ro" \
+            aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 \
+            config --exit-code 1 --severity HIGH,CRITICAL /k8s/base
+      - name: No plaintext secrets committed
+        run: |
+          ! git grep -nIE 'BEGIN [A-Z ]*PRIVATE KEY|AGE-SECRET-KEY[-]|postgresql://[^:/]+:[^@$]{12,}@' -- ':!*.enc.yaml'
+          if [ -f deploy/k8s/overlays/local/secrets.enc.yaml ]; then
+            grep -q 'ENC\[' deploy/k8s/overlays/local/secrets.enc.yaml
+          fi
 
   retrieval-eval:
     name: Retrieval eval (no LLM)
@@ -79,7 +103,7 @@ jobs:
           key: hf-qwen3-embedding-0.6b
       - if: steps.index.outputs.found == 'true'
         run: |
-          uv sync --frozen
+          uv sync --frozen --extra ml
           uv run python -m finrag.evals.index import finrag-index.tsv.gz
           uv run python -m finrag.evals.run --name ci --split dev --mode retrieval
           uv run python -m finrag.evals.gate evals/results/ci-dev.json evals/baseline_retrieval.json

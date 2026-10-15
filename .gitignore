@@ -23,3 +23,8 @@ deploy/gcp/.image
 
 # Local tool config (machine-specific)
 .claude/
+
+# k8s local deployment: generated, host-specific, or plaintext
+deploy/k8s/overlays/local/ollama.patch.yaml
+deploy/k8s/.build/
+*.dec.yaml

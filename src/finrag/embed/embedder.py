@@ -42,6 +42,13 @@ class Embedder:
     @classmethod
     def from_settings(cls, settings: Settings, model: str | None = None) -> Embedder:
         cache = EmbeddingCache(settings.data_dir / "cache" / "embeddings.sqlite")
+        if settings.embed_provider == "ollama":
+            from finrag.embed.ollama_client import OllamaEmbedClient
+
+            client = OllamaEmbedClient(
+                settings.ollama_url, model or settings.ollama_embed_model, settings.embed_dim
+            )
+            return cls(client, cache, budget=None)  # local GPU: nothing to bill
         if settings.embed_provider == "local":
             from finrag.embed.local_client import LocalClient  # imports torch: keep lazy
 

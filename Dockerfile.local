@@ -1,0 +1,34 @@
+# Lean image for the PRIVATE local k8s deployment (api, ui, jobs, egress proxy).
+# No PyTorch: Ollama on the host serves embeddings and the LLM.
+# Base pinned by digest; dependencies installed from the hash-locked uv.lock.
+FROM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_NO_CACHE=1
+
+COPY --from=ghcr.io/astral-sh/uv:0.13.0 /uv /usr/local/bin/uv
+
+# age: encrypts database backups (the dump itself is made by the postgres image).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends age \
+ && apt-get upgrade -y \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-install-project
+COPY src ./src
+COPY ui ./ui
+COPY config ./config
+COPY .streamlit ./.streamlit
+RUN uv sync --frozen && rm /usr/local/bin/uv
+
+# Fixed non-root UID (matches runAsUser in the manifests); no shell login, no home.
+RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin app
+USER 10001
+ENV PATH="/app/.venv/bin:$PATH" HOME=/tmp
+
+CMD ["uvicorn", "finrag.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

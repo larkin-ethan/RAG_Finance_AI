@@ -1,0 +1,11 @@
+# Pod Security Admission "restricted": the API server rejects any pod that runs
+# as root, escalates privileges, keeps capabilities, or uses host namespaces/paths.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: finrag
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

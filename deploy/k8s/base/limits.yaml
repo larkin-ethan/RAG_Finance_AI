@@ -1,0 +1,26 @@
+# Defaults and ceilings so no container runs without limits (and a runaway pod
+# can't starve the machine).
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: defaults
+spec:
+  limits:
+    - type: Container
+      default: {cpu: "1", memory: 1Gi}
+      defaultRequest: {cpu: 100m, memory: 256Mi}
+      max: {cpu: "4", memory: 8Gi}
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: quota
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 16Gi
+    limits.cpu: "16"
+    limits.memory: 32Gi
+    persistentvolumeclaims: "6"
+    services.nodeports: "0"
+    services.loadbalancers: "0"

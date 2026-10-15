@@ -9,7 +9,12 @@ import httpx
 import streamlit as st
 
 API_URL = os.environ.get("FINRAG_API_URL", "http://localhost:8000")
-_client = httpx.Client(base_url=API_URL, timeout=180.0)
+_TOKEN = os.environ.get("FINRAG_API_TOKEN", "")  # service token (private deployment)
+_client = httpx.Client(
+    base_url=API_URL,
+    timeout=180.0,
+    headers={"Authorization": f"Bearer {_TOKEN}"} if _TOKEN else {},
+)
 
 
 def get(path: str, **params) -> dict | list:
@@ -40,6 +45,10 @@ def companies() -> list[dict]:
 
 
 def sidebar_status() -> None:
+    """Called at the top of every page: enforces login first (if configured)."""
+    from auth import require_login
+
+    require_login()
     h = health()
     ok = h.get("status") == "ok" and h.get("db")
     st.sidebar.markdown(f"{'🟢' if ok else '🔴'} System {'online' if ok else 'offline'}")

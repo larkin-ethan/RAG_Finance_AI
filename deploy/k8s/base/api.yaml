@@ -1,0 +1,73 @@
+# FastAPI backend. Not exposed by the ingress: only the UI pod can reach it
+# (NetworkPolicy), and every call needs the UI's service token (API_TOKEN).
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+spec:
+  selector: {app: api}
+  ports:
+    - port: 8000
+      targetPort: 8000
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: api}
+  template:
+    metadata:
+      labels: {app: api, egress-proxy-client: "true", ollama-client: "true", postgres-client: "true"}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: api
+          image: finrag-local:latest
+          imagePullPolicy: Never   # imported into k3d by up.sh; never pulled from a registry
+          command: [uvicorn, finrag.api.main:app, --host, 0.0.0.0, --port, "8000", --no-server-header]
+          envFrom:
+            - configMapRef: {name: finrag-config}
+          env:
+            - {name: DB_AUTO_MIGRATE, value: "false"}
+            - name: DATABASE_URL
+              valueFrom: {secretKeyRef: {name: finrag-secrets, key: DATABASE_URL}}
+            - name: API_TOKEN
+              valueFrom: {secretKeyRef: {name: finrag-secrets, key: API_TOKEN}}
+            - name: FIELD_ENCRYPTION_KEYS
+              valueFrom: {secretKeyRef: {name: finrag-secrets, key: FIELD_ENCRYPTION_KEYS}}
+            - name: SEC_USER_AGENT
+              valueFrom: {secretKeyRef: {name: finrag-secrets, key: SEC_USER_AGENT}}
+          ports:
+            - containerPort: 8000
+          readinessProbe:
+            exec: {command: [python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]}   # exec: no node->pod network rule needed
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {cpu: "2", memory: 2Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: data, mountPath: /app/data}
+            - {name: tmp, mountPath: /tmp}
+            - {name: pg-ca, mountPath: /tls-ca, readOnly: true}
+            - {name: holdings, mountPath: /app/config/private, readOnly: true}
+      volumes:
+        - name: data
+          persistentVolumeClaim: {claimName: app-data}
+        - {name: tmp, emptyDir: {}}
+        - name: pg-ca
+          secret: {secretName: postgres-ca}
+        - name: holdings
+          secret: {secretName: finrag-holdings}   # your private watchlist, never in git

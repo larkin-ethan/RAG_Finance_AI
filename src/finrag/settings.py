@@ -22,7 +22,7 @@ class Settings(BaseSettings):
 
     # Embeddings. "local" runs Qwen3-Embedding on this machine: free, no card,
     # no rate limits. "voyage" uses the Voyage API (see the budget guard).
-    embed_provider: Literal["local", "voyage"] = "local"
+    embed_provider: Literal["local", "voyage", "ollama"] = "local"
     local_embed_model: str = "Qwen/Qwen3-Embedding-0.6B"
 
     # Voyage: voyage-4 has 200M free tokens; one full pass over the demo corpus
@@ -38,6 +38,13 @@ class Settings(BaseSettings):
     # LLM (Gemini API, free tier). Flash answers questions; Flash-Lite handles
     # cheap tasks (eval judge, query parsing). The judge is deliberately a
     # different model from the generator, to reduce self-preference bias.
+    # Which LLM answers questions: "gemini" (public demo) or "ollama" (local,
+    # private; nothing leaves the machine). See generate/llm.py.
+    llm_provider: Literal["gemini", "ollama"] = "gemini"
+    ollama_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen3:14b"
+    ollama_judge_model: str = "gemma3:12b"  # a different model family from the answerer
+    ollama_embed_model: str = "qwen3-embedding:0.6b"
     gemini_model: str = "gemini-3.8-flash"
     gemini_judge_model: str = "gemini-3.5-flash-lite"
     # List prices (USD per 1M tokens) for the cost column in eval results. We
@@ -54,6 +61,11 @@ class Settings(BaseSettings):
     ask_per_minute: int = 6
     daily_question_cap: int = 300
     trust_proxy: bool = False  # True on Cloud Run (read client IP from X-Forwarded-For)
+    # Private local deployment (security). All empty = disabled (public demo / dev).
+    api_token: str = ""  # if set, every API call except /health needs "Authorization: Bearer"
+    app_password_hash: str = ""  # argon2id hash; if set, the UI requires login
+    field_encryption_keys: str = ""  # Fernet keys, newest first (see security/crypto.py)
+    session_idle_minutes: int = 30
     # Locally: on API start, check EDGAR for new filings if the last check is >24h old.
     auto_update_on_start: bool = False
 

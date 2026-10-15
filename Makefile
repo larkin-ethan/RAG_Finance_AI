@@ -9,7 +9,7 @@ export PATH := $(DOCKER_BIN):$(HOME)/.local/bin:$(PATH)
 .PHONY: install test lint db db-down fetch parse chunk load api ui eval sweep
 
 install:
-	$(UV) sync --extra dev
+	$(UV) sync --extra dev --extra ml
 
 test:
 	$(UV) run pytest -q

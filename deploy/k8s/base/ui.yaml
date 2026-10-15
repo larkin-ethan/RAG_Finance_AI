@@ -1,0 +1,63 @@
+# Streamlit UI: the only thing the ingress exposes. Login required (argon2id
+# hash in APP_PASSWORD_HASH); talks to the API with the service token.
+apiVersion: v1
+kind: Service
+metadata:
+  name: ui
+spec:
+  selector: {app: ui}
+  ports:
+    - port: 8501
+      targetPort: 8501
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: ui}
+  template:
+    metadata:
+      labels: {app: ui}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: ui
+          image: finrag-local:latest
+          imagePullPolicy: Never
+          command: [streamlit, run, ui/Home.py, --server.port, "8501", --server.address, 0.0.0.0]
+          env:
+            - {name: FINRAG_API_URL, value: "http://api:8000"}
+            - {name: SESSION_IDLE_MINUTES, value: "30"}
+            - {name: STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION, value: "true"}
+            - {name: STREAMLIT_SERVER_ENABLE_CORS, value: "true"}
+            - {name: STREAMLIT_SERVER_MAX_UPLOAD_SIZE, value: "5"}        # MB, for CSV imports
+            - {name: STREAMLIT_CLIENT_SHOW_ERROR_DETAILS, value: "false"} # no stack traces in the browser
+            - {name: STREAMLIT_BROWSER_GATHER_USAGE_STATS, value: "false"}
+            - name: FINRAG_API_TOKEN
+              valueFrom: {secretKeyRef: {name: finrag-secrets, key: API_TOKEN}}
+            - name: APP_PASSWORD_HASH
+              valueFrom: {secretKeyRef: {name: finrag-secrets, key: APP_PASSWORD_HASH}}
+          ports:
+            - containerPort: 8501
+          readinessProbe:
+            exec: {command: [python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"]}   # exec: no node->pod network rule needed
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - {name: tmp, emptyDir: {}}

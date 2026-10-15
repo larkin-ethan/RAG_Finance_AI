@@ -1,0 +1,40 @@
+# HTTPS only (k3d maps 127.0.0.1:8443 -> 443; port 80 isn't mapped at all).
+# Security headers on every response.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: security-headers
+spec:
+  headers:
+    stsSeconds: 31536000
+    stsIncludeSubdomains: true
+    frameDeny: true
+    contentTypeNosniff: true
+    referrerPolicy: no-referrer
+    permissionsPolicy: "camera=(), microphone=(), geolocation=(), payment=()"
+    customResponseHeaders:
+      Server: ""
+      X-Powered-By: ""
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ui
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+    traefik.ingress.kubernetes.io/router.middlewares: finrag-security-headers@kubernetescrd
+spec:
+  tls:
+    - hosts: [finrag.localhost]
+      secretName: finrag-tls
+  rules:
+    - host: finrag.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ui
+                port: {number: 8501}

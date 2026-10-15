@@ -21,6 +21,7 @@ from typing import Protocol
 import httpx
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+OLLAMA_CHAT_PATH = "/api/chat"
 
 
 @dataclass
@@ -145,6 +146,108 @@ class CachedLLM:
         return response
 
 
-def make_llm(settings, model: str | None = None) -> CachedLLM:
-    client = GeminiClient(settings.gemini_api_key, model or settings.gemini_model)
+def to_json_schema(schema: dict) -> dict:
+    """Convert our Gemini-style schema (OBJECT/STRING types, propertyOrdering)
+    to standard JSON Schema, which Ollama's structured outputs expect."""
+    out = {}
+    for key, value in schema.items():
+        if key == "propertyOrdering":
+            continue
+        if key == "type" and isinstance(value, str):
+            out[key] = value.lower()
+        elif key == "properties":
+            out[key] = {k: to_json_schema(v) for k, v in value.items()}
+        elif key == "items":
+            out[key] = to_json_schema(value)
+        else:
+            out[key] = value
+    return out
+
+
+class OllamaClient:
+    """Local LLM via Ollama's /api/chat (runs on your GPU; nothing leaves the machine).
+
+    num_ctx matters: Ollama's default context window is small and longer prompts
+    are SILENTLY truncated, so the model would answer from half the evidence.
+    Our prompts (6 passages x ~512 tokens + instructions) need ~5-6K tokens.
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        model: str,
+        transport: httpx.BaseTransport | None = None,
+        num_ctx: int = 16384,
+        max_attempts: int = 3,
+        think: bool = False,  # disable "thinking" mode on reasoning models: faster, JSON-only
+    ):
+        self.model, self.num_ctx, self.max_attempts, self.think = (
+            model,
+            num_ctx,
+            max_attempts,
+            think,
+        )
+        # trust_env=False: local traffic must never be routed through HTTPS_PROXY.
+        self._http = httpx.Client(
+            base_url=base_url, timeout=300.0, transport=transport, trust_env=False
+        )
+
+    def generate(
+        self, system: str, prompt: str, schema: dict | None = None, temperature: float = 0.0
+    ) -> LLMResponse:
+        body: dict = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            "stream": False,
+            "think": self.think,
+            "options": {"temperature": temperature, "num_ctx": self.num_ctx},
+        }
+        if schema:
+            json_schema = to_json_schema(schema)
+            body["format"] = json_schema
+            # Ollama recommends also stating the schema in the prompt to ground the output.
+            body["messages"][1]["content"] += (
+                "\n\nRespond with JSON matching this schema:\n" + json.dumps(json_schema)
+            )
+        started = time.time()
+        data = self._post(body)
+        return LLMResponse(
+            text=data.get("message", {}).get("content", ""),
+            model=self.model,
+            input_tokens=data.get("prompt_eval_count", 0),
+            output_tokens=data.get("eval_count", 0),
+            latency_s=time.time() - started,
+        )
+
+    def _post(self, body: dict) -> dict:
+        for attempt in range(self.max_attempts):
+            try:
+                response = self._http.post(OLLAMA_CHAT_PATH, json=body)
+            except httpx.TransportError as exc:  # Ollama not running / restarting
+                if attempt == self.max_attempts - 1:
+                    raise LLMError(f"Can't reach Ollama at {self._http.base_url}: {exc}") from exc
+                time.sleep(2 ** (attempt + 1))
+                continue
+            if response.status_code >= 500 and attempt < self.max_attempts - 1:
+                time.sleep(2 ** (attempt + 1))
+                continue
+            if response.is_error:
+                raise LLMError(f"Ollama {response.status_code}: {response.text[:600]}")
+            return response.json()
+        raise AssertionError("unreachable")
+
+
+def make_llm(settings, role: str = "answer", provider: str | None = None) -> CachedLLM:
+    """The configured LLM for a role ("answer" or "judge"), wrapped in the cache.
+    The judge is deliberately a different model from the answerer."""
+    provider = provider or settings.llm_provider
+    if provider == "ollama":
+        model = settings.ollama_judge_model if role == "judge" else settings.ollama_model
+        client: LLMClient = OllamaClient(settings.ollama_url, model)
+    else:
+        model = settings.gemini_judge_model if role == "judge" else settings.gemini_model
+        client = GeminiClient(settings.gemini_api_key, model)
     return CachedLLM(client, settings.data_dir / "cache" / "llm.sqlite")

@@ -200,6 +200,10 @@ def main() -> None:
     parser.add_argument("--method", choices=["vector", "keyword", "hybrid"], default="vector")
     parser.add_argument("--filters", choices=["none", "auto"], default="none")
     parser.add_argument("--rerank", action="store_true")
+    parser.add_argument(
+        "--llm", choices=["gemini", "ollama"], help="answering LLM (default: settings)"
+    )
+    parser.add_argument("--judge", choices=["gemini", "ollama"], help="judge LLM (default: --llm)")
     parser.add_argument("--limit", type=int)
     parser.add_argument("--types", nargs="*")
     args = parser.parse_args()
@@ -221,8 +225,8 @@ def main() -> None:
     )
 
     full = args.mode == "full"
-    llm = make_llm(settings) if full else None
-    judge = make_llm(settings, settings.gemini_judge_model) if full else None
+    llm = make_llm(settings, "answer", args.llm) if full else None
+    judge = make_llm(settings, "judge", args.judge or args.llm) if full else None
     prices = (settings.gemini_price_input_per_mtok, settings.gemini_price_output_per_mtok)
 
     print(f"Eval '{cfg.name}' on {len(questions)} {args.split} questions ({cfg.mode})")

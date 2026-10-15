@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "Cited Q&A over SEC filings with a rigorous eval suite"
 requires-python = ">=3.11"
 dependencies = [
+    "argon2-cffi>=25.1.0",
     "beautifulsoup4>=4.15.0",
+    "cryptography>=50.0.2",
     "fastapi>=0.143.0",
     "httpx>=0.27",
     "lxml>=6.1.3",
@@ -13,15 +15,20 @@ dependencies = [
     "pydantic>=2.7",
     "pydantic-settings>=2.3",
     "pyyaml>=6.0",
-    "sentence-transformers>=3.0",
     "streamlit>=1.65.0",
-    "torch>=2.7",  # direct dep so [tool.uv.sources] can pick CUDA builds on Windows
-    "transformers>=4.51",
     "uvicorn[standard]>=0.54.0",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.5"]
+# In-process ML: local sentence-transformers embeddings and the cross-encoder
+# reranker. Needed for dev, the GPU pipeline, and the Cloud Run image. The private
+# k8s image skips it: Ollama serves embeddings there (no PyTorch in the container).
+ml = [
+    "sentence-transformers>=3.0",
+    "torch>=2.7",  # direct dep so [tool.uv.sources] can pick CUDA/CPU builds per OS
+    "transformers>=4.51",
+]
 
 [build-system]
 requires = ["hatchling"]

@@ -15,7 +15,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from finrag.api.ratelimit import RateLimiter, client_ip
 from finrag.api.schemas import AskRequest, FeedbackRequest, IngestRequest
@@ -50,6 +50,18 @@ def _catch_up(app: FastAPI) -> None:
 
 
 app = FastAPI(title="FinRAG", description="Cited Q&A over SEC filings", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def require_api_token(request: Request, call_next):
+    """In the private deployment only the UI may call the API: it holds the
+    service token. /health stays open for Kubernetes probes."""
+    expected = get_settings().api_token
+    if expected and request.url.path != "/health":
+        supplied = request.headers.get("authorization", "").removeprefix("Bearer ").strip()
+        if not hmac.compare_digest(supplied, expected):
+            return JSONResponse({"detail": "Unauthorized"}, status_code=401)
+    return await call_next(request)
 
 
 def services(request: Request) -> Services:

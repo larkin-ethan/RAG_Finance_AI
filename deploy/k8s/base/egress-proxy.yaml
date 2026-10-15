@@ -1,0 +1,50 @@
+# The only path to the internet: HTTPS CONNECT to allowlisted hosts
+# (finrag.security.egress_proxy). Everything else is denied by NetworkPolicy.
+apiVersion: v1
+kind: Service
+metadata:
+  name: egress-proxy
+spec:
+  selector: {app: egress-proxy}
+  ports:
+    - port: 3128
+      targetPort: 3128
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: egress-proxy
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: egress-proxy}
+  template:
+    metadata:
+      labels: {app: egress-proxy}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: proxy
+          image: finrag-local:latest
+          imagePullPolicy: Never
+          command: [python, -m, finrag.security.egress_proxy, --port, "3128"]
+          env:
+            - name: EGRESS_ALLOWLIST
+              value: "www.sec.gov,data.sec.gov,api.tiingo.com,api.stlouisfed.org"
+          ports:
+            - containerPort: 3128
+          readinessProbe:
+            exec: {command: [python, -c, "import socket; socket.create_connection(('127.0.0.1', 3128), 3).close()"]}   # exec: no node->pod network rule needed
+            periodSeconds: 10
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 256Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}

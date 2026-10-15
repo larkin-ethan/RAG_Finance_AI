@@ -16,14 +16,14 @@ WORKDIR /app
 # Dependencies first (cached layer). On Linux the lock resolves torch to the
 # CPU-only build, so no CUDA libraries end up in the image.
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-install-project
+RUN uv sync --frozen --extra ml --no-install-project
 
 COPY src ./src
 COPY ui ./ui
 COPY config ./config
 COPY evals ./evals
 COPY .streamlit ./.streamlit
-RUN uv sync --frozen
+RUN uv sync --frozen --extra ml
 
 # Bake the embedding model into the image: no 1.2 GB download on cold start.
 RUN uv run --no-sync python -c \
