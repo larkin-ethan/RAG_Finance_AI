@@ -68,3 +68,28 @@ CREATE TABLE IF NOT EXISTS job_runs (
     summary     jsonb
 );
 CREATE INDEX IF NOT EXISTS job_runs_job ON job_runs (job, started_at DESC);
+
+-- Positions and tax profile (private deployment). EVERY sensitive field is
+-- Fernet-encrypted by the app (security/crypto.py), including the ticker:
+-- the list of tickers alone reveals the portfolio. Rows hold only ciphertext.
+CREATE TABLE IF NOT EXISTS positions (
+    id          bigserial PRIMARY KEY,
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    updated_at  timestamptz NOT NULL DEFAULT now(),
+    lot_enc     text NOT NULL          -- encrypted JSON: ticker, shares, cost, date, account
+);
+CREATE TABLE IF NOT EXISTS tax_profile (
+    id          smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1),   -- single user
+    profile_enc text NOT NULL,
+    updated_at  timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS csv_mappings (     -- column mappings per broker (no data, not sensitive)
+    name        text PRIMARY KEY,
+    mapping     jsonb NOT NULL
+);
+CREATE TABLE IF NOT EXISTS audit_log (        -- what changed and when; never the values
+    id          bigserial PRIMARY KEY,
+    at          timestamptz NOT NULL DEFAULT now(),
+    action      text NOT NULL,
+    position_id bigint
+);

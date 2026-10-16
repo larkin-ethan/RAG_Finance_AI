@@ -1,0 +1,24 @@
+# US federal tax parameters for tax year 2026 (returns filed in 2027).
+# Source: IRS Revenue Procedure 2025-32 (inflation adjustments), as tabulated by
+# the Tax Foundation: https://taxfoundation.org/data/all/federal/2026-tax-brackets/
+# NIIT thresholds are statutory (IRC section 1411) and not inflation-indexed.
+# Re-verify each year against IRS.gov before relying on estimates.
+year: 2026
+source: "IRS Rev. Proc. 2025-32; NIIT: IRC 1411"
+filing_status:
+  single:
+    # [upper bound of taxable income, rate]; null = no upper bound
+    ordinary: [[12400, 0.10], [50400, 0.12], [105700, 0.22], [201775, 0.24], [256225, 0.32], [640600, 0.35], [null, 0.37]]
+    ltcg: [[49450, 0.00], [545500, 0.15], [null, 0.20]]
+    niit_threshold: 200000
+    standard_deduction: 16100
+  married_joint:
+    ordinary: [[24800, 0.10], [100800, 0.12], [211400, 0.22], [403550, 0.24], [512450, 0.32], [768700, 0.35], [null, 0.37]]
+    ltcg: [[98900, 0.00], [613700, 0.15], [null, 0.20]]
+    niit_threshold: 250000
+    standard_deduction: 32200
+  head_of_household:
+    ordinary: [[17700, 0.10], [67450, 0.12], [105700, 0.22], [201775, 0.24], [256200, 0.32], [640600, 0.35], [null, 0.37]]
+    ltcg: [[66200, 0.00], [579600, 0.15], [null, 0.20]]
+    niit_threshold: 200000
+    standard_deduction: 24150

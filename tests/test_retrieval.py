@@ -122,3 +122,30 @@ def test_eval_index_export_import_roundtrip(tmp_path, monkeypatch):
     finally:
         wipe()
         get_settings.cache_clear()
+
+
+@pytest.mark.skipif(not _db_available(), reason="Postgres not running (make db)")
+def test_positions_are_stored_encrypted_and_audited():
+    from datetime import date
+
+    from cryptography.fernet import Fernet
+
+    from finrag.ratings.positions import Lot, PositionsRepo
+    from finrag.security.crypto import FieldCipher
+    from finrag.store.db import connect
+
+    conn = connect(DB_URL, init=True)
+    repo = PositionsRepo(conn, FieldCipher(Fernet.generate_key().decode()))
+    pid = repo.add(Lot("ZZTEST", 7, 123.45, date(2022, 2, 2), "Roth"))
+    try:
+        raw = conn.execute("SELECT lot_enc FROM positions WHERE id = %s", (pid,)).fetchone()[0]
+        assert "ZZTEST" not in raw and "123.45" not in raw and "Roth" not in raw
+        assert next(lot for lot in repo.list() if lot.id == pid).ticker == "ZZTEST"
+        repo.update(pid, Lot("ZZTEST", 8, 123.45, date(2022, 2, 2)))
+        assert next(lot for lot in repo.list() if lot.id == pid).shares == 8
+        actions = [r[0] for r in conn.execute(
+            "SELECT action FROM audit_log WHERE position_id = %s ORDER BY id", (pid,)).fetchall()]  # fmt: skip
+        assert actions == ["add", "update"]
+    finally:
+        repo.delete(pid)
+        conn.execute("DELETE FROM audit_log WHERE position_id = %s", (pid,))
