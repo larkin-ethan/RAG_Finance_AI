@@ -176,3 +176,55 @@ class Services:
                       citations, model FROM feedback ORDER BY created_at DESC LIMIT %(n)s""",
             {"n": limit},
         )
+
+    # ---------- stock checks & portfolio (private deployment) ----------
+
+    @cached_property
+    def positions(self):
+        from finrag.ratings.positions import PositionsRepo
+        from finrag.security.crypto import FieldCipher
+
+        return _LockedRepo(
+            PositionsRepo(self.conn, FieldCipher(self.settings.field_encryption_keys)),
+            self._db_lock,
+        )
+
+    @cached_property
+    def checker(self):
+        from finrag.ratings.check import StockChecker
+
+        return StockChecker(
+            self.settings, embed=lambda texts: self.embedder.embed(texts), llm=self.llm
+        )
+
+    def save_csv_mapping(self, name: str, mapping: dict) -> None:
+        with self._db_lock:
+            self.conn.execute(
+                "INSERT INTO csv_mappings (name, mapping) VALUES (%s, %s) "
+                "ON CONFLICT (name) DO UPDATE SET mapping = EXCLUDED.mapping",
+                (name, json.dumps(mapping)),
+            )
+
+    def csv_mappings(self) -> dict:
+        return {
+            r["name"]: r["mapping"]
+            for r in self._query("SELECT name, mapping FROM csv_mappings ORDER BY name")
+        }
+
+
+class _LockedRepo:
+    """Serializes repo calls on the shared DB connection."""
+
+    def __init__(self, inner, lock: threading.Lock):
+        self._inner, self._lock = inner, lock
+
+    def __getattr__(self, name):
+        attr = getattr(self._inner, name)
+        if not callable(attr):
+            return attr
+
+        def locked(*args, **kwargs):
+            with self._lock:
+                return attr(*args, **kwargs)
+
+        return locked

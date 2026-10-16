@@ -163,3 +163,16 @@ def test_public_demo_limits_ask_and_locks_ingest(client):
     assert r.status_code == 429 and "per minute" in r.json()["detail"]
     assert c.post("/ingest", json={"ticker": "TSLA"}).status_code == 403
     del app.state.limiter
+
+
+def test_database_down_returns_503_without_leaking_details(client):
+    import psycopg
+
+    c, fake = client
+
+    def boom():
+        raise psycopg.OperationalError('connection to server at "10.1.2.3", port 5432 failed')
+
+    fake.companies = boom
+    r = c.get("/companies")
+    assert r.status_code == 503 and "10.1.2.3" not in r.text and "5432" not in r.text

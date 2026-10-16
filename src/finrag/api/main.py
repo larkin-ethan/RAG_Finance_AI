@@ -14,6 +14,7 @@ from dataclasses import asdict
 from datetime import date, timedelta
 from pathlib import Path
 
+import psycopg
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
@@ -50,6 +51,23 @@ def _catch_up(app: FastAPI) -> None:
 
 
 app = FastAPI(title="FinRAG", description="Cited Q&A over SEC filings", lifespan=lifespan)
+
+
+@app.exception_handler(psycopg.OperationalError)
+async def database_unavailable(request: Request, exc: psycopg.OperationalError) -> JSONResponse:
+    """DB down -> 503 with a plain message. The driver's error text (hosts, ports)
+    is logged server-side only, never returned to the client."""
+    print(f"database unavailable: {type(exc).__name__}", flush=True)
+    return JSONResponse({"detail": "Database unavailable. Try again shortly."}, status_code=503)
+
+
+def _include_ratings_routes() -> None:
+    from finrag.api.ratings_routes import router
+
+    app.include_router(router)
+
+
+_include_ratings_routes()  # routes always exist but 404 unless ratings are enabled
 
 
 @app.middleware("http")
@@ -184,4 +202,5 @@ def config(request: Request) -> dict:
         "judge_model": s.gemini_judge_model,
         "chunk_strategy": "section-512",
         "watchlist": s.watchlist_path.name,
+        "ratings_enabled": bool(s.ratings_enabled and not s.public_demo),
     }

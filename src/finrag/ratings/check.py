@@ -97,7 +97,9 @@ class StockChecker:
         # Measured by the backtest (out-of-sample split); absent until it has run.
         ic_file = data / "cache" / "ic_by_horizon.json"
         if ic_by_horizon is None and ic_file.exists():
-            ic_by_horizon = {int(k): v for k, v in json.loads(ic_file.read_text(encoding="utf-8")).items()}
+            ic_by_horizon = {
+                int(k): v for k, v in json.loads(ic_file.read_text(encoding="utf-8")).items()
+            }
         self.ic = ic_by_horizon
         self._treasury: TreasuryYield | None = None
 

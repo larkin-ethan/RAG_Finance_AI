@@ -76,6 +76,28 @@ deploy/k8s/verify.sh
 Every line should read `PASS`. Also do the two manual checks it prints (Windows listening
 sockets, and that your phone **can't** open `https://<PC-LAN-IP>:8443`).
 
+## 6. Stock checks and your portfolio
+
+Needs free API keys for **Tiingo** (prices) and **FRED** (10-year Treasury yield),
+entered in `setup-secrets.sh`. If you skipped them, re-run it (read its warning first).
+
+- **Stock Check** page: pick a ticker, goals (dividend income, growth, value, stability)
+  and an optional timeline. You get fit grades, the factors behind them, historical outcomes
+  for your holding period, new risk-factor text, and your lots' tax view.
+- **Portfolio** page: add lots by hand or import your broker's CSV (map the columns once;
+  every row is validated; nothing imports unless all rows are valid). Enter your
+  filing status and estimated income for federal tax estimates.
+
+Everything here is **research, not investment or tax advice**. Grades describe how
+well reported data fits a goal; they don't predict returns.
+
+**Backtest** (measures whether the grades meant anything historically, and feeds the
+timeline report's "how much do fundamentals matter" line):
+```bash
+kubectl -n finrag exec deploy/api -- python -m finrag.ratings.backtest
+```
+It fetches ~100 companies' XBRL data and prices once (cached), so the first run takes a while.
+
 ## Day-to-day
 
 | Task | Command |

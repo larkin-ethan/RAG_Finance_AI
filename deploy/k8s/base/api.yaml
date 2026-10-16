@@ -46,6 +46,10 @@ spec:
               valueFrom: {secretKeyRef: {name: finrag-secrets, key: FIELD_ENCRYPTION_KEYS}}
             - name: SEC_USER_AGENT
               valueFrom: {secretKeyRef: {name: finrag-secrets, key: SEC_USER_AGENT}}
+            - name: TIINGO_API_KEY   # stock checks: prices (via the egress proxy)
+              valueFrom: {secretKeyRef: {name: finrag-secrets, key: TIINGO_API_KEY}}
+            - name: FRED_API_KEY     # stock checks: 10-year Treasury yield
+              valueFrom: {secretKeyRef: {name: finrag-secrets, key: FRED_API_KEY}}
           ports:
             - containerPort: 8000
           readinessProbe:

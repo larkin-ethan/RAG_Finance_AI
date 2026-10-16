@@ -38,3 +38,27 @@ class FeedbackRequest(BaseModel):
     details: str | None = Field(None, max_length=4000)
     citations: list[dict] = Field(default_factory=list, max_length=20)
     model: str | None = Field(None, max_length=100)
+
+
+# ---------- stock checks & portfolio (private deployment only) ----------
+
+
+class LotIn(BaseModel):
+    ticker: str = Field(min_length=1, max_length=10)
+    shares: float = Field(gt=0, lt=1e9)
+    cost_per_share: float = Field(ge=0, lt=1e7)
+    purchase_date: date
+    account: str = Field("", max_length=60)
+
+
+class CsvImportIn(BaseModel):
+    csv_text: str = Field(max_length=1_000_000)
+    mapping: dict[str, str]
+    save_mapping_as: str | None = Field(None, max_length=40, pattern=r"^[\w .-]+$")
+    dry_run: bool = True
+
+
+class TaxProfileIn(BaseModel):
+    filing_status: Literal["single", "married_joint", "head_of_household"]
+    taxable_income: float = Field(ge=0, lt=1e9)
+    magi: float | None = Field(None, ge=0, lt=1e9)
