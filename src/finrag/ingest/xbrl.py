@@ -14,6 +14,7 @@ belongs to a filing only when the fact's end date equals that filing's period en
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -61,10 +62,16 @@ class Fact:
         return (self.end - self.start).days if self.start else None
 
 
-def load_company_facts(client: EdgarClient, cik: str, cache_dir: Path) -> dict:
-    """Fetch (or read cached) companyfacts JSON for one CIK."""
+def load_company_facts(
+    client: EdgarClient, cik: str, cache_dir: Path, max_age_s: float | None = None
+) -> dict:
+    """Fetch (or read cached) companyfacts JSON for one CIK. max_age_s=None caches
+    forever (frozen eval sets); live stock checks pass ~1 day to pick up new filings."""
     path = cache_dir / f"CIK{cik}.json"
-    if not path.exists():
+    stale = (
+        max_age_s is not None and path.exists() and time.time() - path.stat().st_mtime > max_age_s
+    )
+    if not path.exists() or stale:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(client._get(FACTS_URL.format(cik=cik)).text, encoding="utf-8")
     return json.loads(path.read_text(encoding="utf-8"))

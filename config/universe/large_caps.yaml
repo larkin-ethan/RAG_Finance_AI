@@ -1,0 +1,13 @@
+# Backtest universe: ~100 of today's largest US companies across sectors,
+# approximately the S&P 100 as of late 2026 (hand-maintained, not an official list).
+# SURVIVORSHIP BIAS: these are companies that survived and grew to be large, which
+# flatters any backtest. Every backtest report states this caveat.
+# Tickers use SEC/Tiingo style (BRK-B, not BRK.B).
+tickers: [
+  AAPL, MSFT, NVDA, AMZN, GOOGL, META, BRK-B, TSLA, AVGO, LLY, JPM, V, UNH, XOM, MA, JNJ,
+  PG, HD, COST, ABBV, MRK, WMT, NFLX, CRM, BAC, KO, CVX, PEP, AMD, TMO, ORCL, LIN, ACN,
+  MCD, ADBE, CSCO, ABT, WFC, DIS, IBM, GE, QCOM, INTU, CAT, TXN, VZ, DHR, AMGN, PM, NOW,
+  ISRG, PFE, CMCSA, UNP, GS, SPGI, NEE, T, RTX, LOW, HON, AXP, BKNG, COP, MS, SCHW, BLK,
+  ELV, PLD, SYK, UPS, MDT, DE, TJX, ADP, BMY, C, GILD, MO, SBUX, CB, LMT, AMT, MDLZ, CVS,
+  SO, DUK, MMM, BA, USB, TGT, EMR, GD, CL, F, GM, COF, MET, AIG, KHC
+]
