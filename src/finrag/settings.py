@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     ask_per_minute: int = 6
     daily_question_cap: int = 300
     trust_proxy: bool = False  # True on Cloud Run (read client IP from X-Forwarded-For)
+    # Stock checks (private local deployment only). Free API keys.
+    ratings_enabled: bool = False
+    tiingo_api_key: str = ""
+    fred_api_key: str = ""
+
     # Private local deployment (security). All empty = disabled (public demo / dev).
     api_token: str = ""  # if set, every API call except /health needs "Authorization: Bearer"
     app_password_hash: str = ""  # argon2id hash; if set, the UI requires login
