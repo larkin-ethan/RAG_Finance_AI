@@ -283,7 +283,8 @@ def main() -> None:
     rows = build_panel(cache, as_of_dates(args.start, args.end), args.goals)
     report = evaluate(rows, args.goals) | {"random_control": random_control(rows, args.goals),
                                            "universe": len(stores), "as_of_dates": len({r.as_of for r in rows})}  # fmt: skip
-    out = Path("evals/results/backtest") / f"backtest-{date.today()}.json"
+    # Under data_dir: the only writable path in the hardened container (read-only root).
+    out = s.data_dir / "backtest" / f"backtest-{date.today()}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=1, default=str), encoding="utf-8")
     # The horizon report reads measured IC from here (test split = out-of-sample).
