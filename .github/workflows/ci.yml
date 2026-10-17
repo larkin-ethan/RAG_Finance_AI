@@ -97,7 +97,7 @@ jobs:
           version: "0.13.0"
           enable-cache: true
       - if: steps.index.outputs.found == 'true'
-        uses: actions/cache@v4  # the 1.2 GB embedding model
+        uses: actions/cache@v6  # the 1.2 GB embedding model
         with:
           path: ~/.cache/huggingface
           key: hf-qwen3-embedding-0.6b
