@@ -1,7 +1,7 @@
 # One image for the API, the UI, and the daily job (each Cloud Run service/job
 # just runs a different command). Build remotely with Cloud Build:
 #   gcloud builds submit --tag <image> .
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 ENV PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
