@@ -27,7 +27,7 @@ dev = ["pytest>=8.0", "ruff>=0.5"]
 ml = [
     "sentence-transformers>=3.0",
     "torch>=2.7",  # direct dep so [tool.uv.sources] can pick CUDA/CPU builds per OS
-    "transformers>=4.51",
+    "transformers>=5.20.2",
 ]
 
 [build-system]
