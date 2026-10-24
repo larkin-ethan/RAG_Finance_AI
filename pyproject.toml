@@ -25,7 +25,7 @@ dev = ["pytest>=8.0", "ruff>=0.5"]
 # reranker. Needed for dev, the GPU pipeline, and the Cloud Run image. The private
 # k8s image skips it: Ollama serves embeddings there (no PyTorch in the container).
 ml = [
-    "sentence-transformers>=3.0",
+    "sentence-transformers>=6.2.0",
     "torch>=2.7",  # direct dep so [tool.uv.sources] can pick CUDA/CPU builds per OS
     "transformers>=4.51",
 ]
