@@ -1,7 +1,7 @@
 # Lean image for the PRIVATE local k8s deployment (api, ui, jobs, egress proxy).
 # No PyTorch: Ollama on the host serves embeddings and the LLM.
 # Base pinned by digest; dependencies installed from the hash-locked uv.lock.
-FROM python:3.11-slim@sha256:e88e9763f943ec1834f992a4b51e0f24500486803e8bc534e5767af9ea65f6ce
+FROM python:3.15-slim@sha256:94d3426f1def7db4a106a232ac121bfd975393e5dfd40a619b955fae45fe7913
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
